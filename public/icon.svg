@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#6366f1" />
+      <stop offset="100%" stop-color="#4338ca" />
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="128" fill="url(#grad)" />
+  <!-- Notebook shape -->
+  <rect x="110" y="90" width="292" height="332" rx="28" fill="#ffffff" fill-opacity="0.95" />
+  <rect x="110" y="90" width="48" height="332" rx="16" fill="#e0e7ff" />
+  <!-- Notebook lines -->
+  <rect x="185" y="170" width="180" height="18" rx="9" fill="#94a3b8" />
+  <rect x="185" y="220" width="180" height="18" rx="9" fill="#cbd5e1" />
+  <rect x="185" y="270" width="130" height="18" rx="9" fill="#cbd5e1" />
+  <!-- AI Sparkle star -->
+  <path d="M370 290 L385 330 L425 345 L385 360 L370 400 L355 360 L315 345 L355 330 Z" fill="#fbbf24" stroke="#f59e0b" stroke-width="4" />
+</svg>

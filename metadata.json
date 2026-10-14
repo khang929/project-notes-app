@@ -1,0 +1,7 @@
+{
+  "name": "Quản lý ghi chú cá nhân AI",
+  "description": "Ứng dụng quản lý ghi chú cá nhân hiện đại, hỗ trợ ghim ghi chú, phân loại thẻ, tìm kiếm, lưu trữ localStorage, chế độ sáng/tối và tính năng AI tóm tắt, gợi ý thẻ cùng trợ lý thông minh.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
+
