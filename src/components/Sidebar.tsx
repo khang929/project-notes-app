@@ -233,7 +233,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </div>
           <div className="flex justify-between">
             <span>Đã lưu trữ:</span>
-            <span className="text-emerald-600 dark:text-emerald-400 font-medium">localStorage an toàn</span>
+            <span className="text-emerald-600 dark:text-emerald-400 font-medium">Đồng bộ đám mây</span>
           </div>
         </div>
 

@@ -15,8 +15,15 @@ import {
   Tag as TagIcon
 } from 'lucide-react';
 import { Note, FilterState, User } from './types';
-import { getStoredNotes, saveStoredNotes, getStoredTheme, saveStoredTheme, INITIAL_SAMPLE_NOTES } from './utils/storage';
-import { getCurrentUser, setCurrentUser, isSessionLocked, setSessionLocked } from './utils/auth';
+import { getStoredTheme, saveStoredTheme, INITIAL_SAMPLE_NOTES } from './utils/storage';
+import { getCurrentUser, onAuthChange, logoutUser, isSessionLocked, setSessionLocked } from './utils/auth';
+import {
+  fetchNotes,
+  insertNote,
+  insertManyNotes,
+  updateNote as updateNoteRemote,
+  deleteNote as deleteNoteRemote,
+} from './utils/notesApi';
 import { Navbar } from './components/Navbar';
 import { Sidebar } from './components/Sidebar';
 import { NoteCard } from './components/NoteCard';
@@ -32,19 +39,15 @@ import { ChangePasswordModal } from './components/ChangePasswordModal';
 
 export default function App() {
   // Authentication & Security state
-  const [currentUser, setCurrentUserState] = useState<User | null>(() => getCurrentUser());
+  const [currentUser, setCurrentUserState] = useState<User | null>(null);
+  const [authReady, setAuthReady] = useState(false);
   const [isLocked, setIsLocked] = useState<boolean>(() => isSessionLocked());
-  const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(() => {
-    // Show auth modal on load if not logged in or if session is locked
-    return !getCurrentUser() || isSessionLocked();
-  });
-  const [authModalMode, setAuthModalMode] = useState<'login' | 'register' | 'lock'>(() => {
-    if (getCurrentUser() && isSessionLocked()) return 'lock';
-    return 'login';
-  });
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false);
+  const [authModalMode, setAuthModalMode] = useState<'login' | 'register' | 'lock'>('login');
   const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
 
-  const [notes, setNotes] = useState<Note[]>(() => getStoredNotes(getCurrentUser()?.id));
+  const [notes, setNotes] = useState<Note[]>([]);
+  const [isLoadingNotes, setIsLoadingNotes] = useState(false);
   const [theme, setTheme] = useState<'light' | 'dark'>(() => getStoredTheme());
   
   // Modals state
@@ -95,10 +98,60 @@ export default function App() {
     }
   }, [theme]);
 
-  // Persist notes to localStorage for current user
+  // Khôi phục phiên đăng nhập khi mở app và theo dõi đăng nhập/đăng xuất (kể cả từ tab khác)
   useEffect(() => {
-    saveStoredNotes(notes, currentUser?.id);
-  }, [notes, currentUser]);
+    let active = true;
+    getCurrentUser()
+      .then((user) => {
+        if (!active) return;
+        setCurrentUserState(user);
+        if (user && isSessionLocked()) {
+          setAuthModalMode('lock');
+          setIsAuthModalOpen(true);
+        }
+      })
+      .finally(() => {
+        if (active) setAuthReady(true);
+      });
+
+    const unsubscribe = onAuthChange((user) => {
+      if (!active) return;
+      setCurrentUserState((prev) => (prev?.id === user?.id ? prev : user));
+    });
+
+    return () => {
+      active = false;
+      unsubscribe();
+    };
+  }, []);
+
+  // Chưa đăng nhập -> hiện màn hình đăng nhập
+  useEffect(() => {
+    if (authReady && !currentUser) {
+      setNotes([]);
+      setIsAuthModalOpen(true);
+    }
+  }, [authReady, currentUser]);
+
+  // Tải ghi chú từ Supabase mỗi khi đổi tài khoản
+  useEffect(() => {
+    if (!currentUser) return;
+    let active = true;
+    setIsLoadingNotes(true);
+    fetchNotes()
+      .then((data) => {
+        if (active) setNotes(data);
+      })
+      .catch((err) => {
+        if (active) showToast(`Không tải được ghi chú: ${err.message}`, 'error');
+      })
+      .finally(() => {
+        if (active) setIsLoadingNotes(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [currentUser?.id]);
 
   // Auth & Lock handlers
   const handleAuthSuccess = (user: User) => {
@@ -106,7 +159,6 @@ export default function App() {
     setIsLocked(false);
     setSessionLocked(false);
     setIsAuthModalOpen(false);
-    setNotes(getStoredNotes(user.id));
     showToast(`Chào mừng, ${user.name}! Đăng nhập thành công.`, 'success');
   };
 
@@ -118,12 +170,16 @@ export default function App() {
     showToast('Ứng dụng đã được khóa bảo mật', 'info');
   };
 
-  const handleLogout = () => {
-    setCurrentUser(null);
+  const handleLogout = async () => {
+    try {
+      await logoutUser();
+    } catch (err) {
+      console.error('Logout error:', err);
+    }
     setCurrentUserState(null);
     setSessionLocked(false);
     setIsLocked(false);
-    setNotes(getStoredNotes(undefined));
+    setNotes([]);
     setAuthModalMode('login');
     setIsAuthModalOpen(true);
     showToast('Đã đăng xuất tài khoản an toàn', 'info');
@@ -134,69 +190,86 @@ export default function App() {
     setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'));
   };
 
-  // Note CRUD operations
-  const handleSaveNote = (noteData: Omit<Note, 'id' | 'createdAt' | 'updatedAt'> & { id?: string }) => {
-    const now = new Date().toISOString();
-    if (noteData.id) {
-      // Update
-      setNotes((prev) =>
-        prev.map((n) =>
-          n.id === noteData.id
-            ? {
-                ...n,
-                ...noteData,
-                updatedAt: now,
-              }
-            : n
-        )
-      );
-      showToast('Đã cập nhật ghi chú thành công!', 'success');
-    } else {
-      // Create new
-      const newNote: Note = {
-        ...noteData,
-        userId: currentUser?.id,
-        id: `note-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
-        createdAt: now,
-        updatedAt: now,
-      };
-      setNotes((prev) => [newNote, ...prev]);
-      showToast('Đã tạo ghi chú mới thành công!', 'success');
+  // Note CRUD operations (lưu trên Supabase)
+  const handleSaveNote = async (noteData: Omit<Note, 'id' | 'createdAt' | 'updatedAt'> & { id?: string }) => {
+    if (!currentUser) {
+      showToast('Vui lòng đăng nhập để lưu ghi chú', 'error');
+      return;
+    }
+    try {
+      if (noteData.id) {
+        const saved = await updateNoteRemote(noteData.id, noteData);
+        setNotes((prev) => prev.map((n) => (n.id === saved.id ? saved : n)));
+        showToast('Đã cập nhật ghi chú thành công!', 'success');
+      } else {
+        const saved = await insertNote(noteData);
+        setNotes((prev) => [saved, ...prev]);
+        showToast('Đã tạo ghi chú mới thành công!', 'success');
+      }
+    } catch (err: any) {
+      showToast(`Không lưu được ghi chú: ${err?.message || 'lỗi không xác định'}`, 'error');
     }
   };
 
-  const handleConfirmDelete = () => {
-    if (noteToDelete) {
-      const deletedTitle = noteToDelete.title || 'không tiêu đề';
-      setNotes((prev) => prev.filter((n) => n.id !== noteToDelete.id));
+  const handleConfirmDelete = async () => {
+    if (!noteToDelete) return;
+    const target = noteToDelete;
+    const deletedTitle = target.title || 'không tiêu đề';
+    setNoteToDelete(null);
+    try {
+      await deleteNoteRemote(target.id);
+      setNotes((prev) => prev.filter((n) => n.id !== target.id));
       showToast(`Đã xóa ghi chú "${deletedTitle}" thành công`, 'info');
-      setNoteToDelete(null);
+    } catch (err: any) {
+      showToast(`Không xóa được ghi chú: ${err?.message || 'lỗi không xác định'}`, 'error');
     }
   };
 
-  const handleConfirmReset = () => {
-    setNotes(INITIAL_SAMPLE_NOTES);
+  // Thêm bộ ghi chú mẫu vào tài khoản (không xóa ghi chú hiện có)
+  const handleConfirmReset = async () => {
     setIsResetConfirmOpen(false);
-    showToast('Đã khôi phục lại danh sách ghi chú mẫu!', 'success');
+    try {
+      const added = await insertManyNotes(INITIAL_SAMPLE_NOTES);
+      setNotes((prev) => [...added, ...prev]);
+      showToast('Đã thêm các ghi chú mẫu vào tài khoản!', 'success');
+    } catch (err: any) {
+      showToast(`Không thêm được ghi chú mẫu: ${err?.message || 'lỗi không xác định'}`, 'error');
+    }
   };
 
-  const handleTogglePin = (id: string) => {
-    setNotes((prev) =>
-      prev.map((n) => {
-        if (n.id === id) {
-          const nextPinned = !n.isPinned;
-          showToast(nextPinned ? 'Đã ghim ghi chú lên đầu' : 'Đã bỏ ghim ghi chú', 'info');
-          return { ...n, isPinned: nextPinned, updatedAt: new Date().toISOString() };
-        }
-        return n;
-      })
-    );
+  // Nhập từ file JSON sao lưu: thêm vào tài khoản, không ghi đè ghi chú hiện có
+  const handleImportNotes = async (imported: Note[]) => {
+    try {
+      const added = await insertManyNotes(imported);
+      setNotes((prev) => [...added, ...prev]);
+      showToast(`Đã nhập thành công ${added.length} ghi chú vào tài khoản!`, 'success');
+    } catch (err: any) {
+      showToast(`Không nhập được ghi chú: ${err?.message || 'lỗi không xác định'}`, 'error');
+    }
   };
 
-  const handleUpdateSummary = (id: string, summary: string) => {
-    setNotes((prev) =>
-      prev.map((n) => (n.id === id ? { ...n, summary, updatedAt: new Date().toISOString() } : n))
-    );
+  const handleTogglePin = async (id: string) => {
+    const target = notes.find((n) => n.id === id);
+    if (!target) return;
+    const nextPinned = !target.isPinned;
+    setNotes((prev) => prev.map((n) => (n.id === id ? { ...n, isPinned: nextPinned } : n)));
+    try {
+      const saved = await updateNoteRemote(id, { isPinned: nextPinned });
+      setNotes((prev) => prev.map((n) => (n.id === id ? saved : n)));
+      showToast(nextPinned ? 'Đã ghim ghi chú lên đầu' : 'Đã bỏ ghim ghi chú', 'info');
+    } catch (err: any) {
+      setNotes((prev) => prev.map((n) => (n.id === id ? { ...n, isPinned: !nextPinned } : n)));
+      showToast(`Không ghim được ghi chú: ${err?.message || 'lỗi không xác định'}`, 'error');
+    }
+  };
+
+  const handleUpdateSummary = async (id: string, summary: string) => {
+    setNotes((prev) => prev.map((n) => (n.id === id ? { ...n, summary } : n)));
+    try {
+      await updateNoteRemote(id, { summary }, false);
+    } catch (err: any) {
+      showToast(`Không lưu được tóm tắt: ${err?.message || 'lỗi không xác định'}`, 'error');
+    }
   };
 
   // Open Edit modal
@@ -306,7 +379,7 @@ export default function App() {
   }, [filteredNotes, isSeparatingPinned]);
 
   return (
-    <div className="min-h-screen flex flex-col bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors">
+    <div className="min-h-screen flex flex-col app-bg text-slate-900 dark:text-slate-100 transition-colors">
       
       {/* Top Navbar */}
       <Navbar
@@ -373,10 +446,7 @@ export default function App() {
             onFilterChange={(updates) => setFilter((prev) => ({ ...prev, ...updates }))}
             allTags={allTags}
             notes={notes}
-            onImportNotes={(imported) => {
-              setNotes(imported);
-              showToast(`Đã nhập thành công ${imported.length} ghi chú!`, 'success');
-            }}
+            onImportNotes={handleImportNotes}
             onRequestResetSamples={() => setIsResetConfirmOpen(true)}
             onShowToast={showToast}
           />
@@ -390,8 +460,15 @@ export default function App() {
               existingAppTags={existingAppTagNames}
             />
 
+            {/* Loading State */}
+            {isLoadingNotes && notes.length === 0 && (
+              <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-10 text-center text-sm text-slate-500">
+                Đang tải ghi chú của bạn...
+              </div>
+            )}
+
             {/* Empty State */}
-            {filteredNotes.length === 0 && (
+            {!isLoadingNotes && filteredNotes.length === 0 && (
               <div className="bg-white dark:bg-slate-900 border border-dashed border-slate-200 dark:border-slate-800 rounded-3xl p-12 text-center space-y-4">
                 <div className="w-14 h-14 rounded-2xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 mx-auto flex items-center justify-center">
                   <FolderOpen className="w-7 h-7" />
@@ -522,7 +599,7 @@ export default function App() {
       <ConfirmDialog
         isOpen={Boolean(noteToDelete)}
         title="Xác nhận xóa ghi chú"
-        message="Bạn có chắc chắn muốn xóa ghi chú này không? Thao tác này sẽ xóa vĩnh viễn ghi chú khỏi bộ nhớ thiết bị."
+        message="Bạn có chắc chắn muốn xóa ghi chú này không? Thao tác này sẽ xóa vĩnh viễn ghi chú khỏi tài khoản của bạn trên mọi thiết bị."
         noteTitle={noteToDelete?.title || 'Ghi chú không tiêu đề'}
         confirmLabel="Xóa ghi chú"
         cancelLabel="Hủy"
@@ -534,9 +611,9 @@ export default function App() {
       {/* Reset Sample Notes Confirmation Dialog */}
       <ConfirmDialog
         isOpen={isResetConfirmOpen}
-        title="Khôi phục ghi chú mẫu"
-        message="Thao tác này sẽ đặt lại danh sách ghi chú về bộ dữ liệu mẫu ban đầu. Bạn có muốn tiếp tục?"
-        confirmLabel="Khôi phục mẫu"
+        title="Thêm ghi chú mẫu"
+        message="Thao tác này sẽ thêm bộ ghi chú mẫu vào tài khoản của bạn. Các ghi chú hiện có vẫn được giữ nguyên. Bạn có muốn tiếp tục?"
+        confirmLabel="Thêm ghi chú mẫu"
         cancelLabel="Hủy"
         isDestructive={false}
         onConfirm={handleConfirmReset}
@@ -567,7 +644,7 @@ export default function App() {
       {currentUser && (
         <ChangePasswordModal
           isOpen={isChangePasswordOpen}
-          userId={currentUser.id}
+          email={currentUser.email}
           onClose={() => setIsChangePasswordOpen(false)}
           onSuccess={() => showToast('Đổi mật khẩu thành công!', 'success')}
         />
@@ -578,7 +655,7 @@ export default function App() {
         <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-3">
           <p>© {new Date().getFullYear()} Quản Lý Ghi Chú Cá Nhân · Hỗ trợ AI Gemini</p>
           <div className="flex items-center gap-4 text-xs">
-            <span>Dữ liệu lưu trữ trình duyệt (localStorage)</span>
+            <span>Dữ liệu đồng bộ trên đám mây</span>
             <span>·</span>
             <span>Chế độ {theme === 'dark' ? 'Tối' : 'Sáng'}</span>
           </div>

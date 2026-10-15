@@ -2,10 +2,8 @@ export type NoteColor = 'default' | 'blue' | 'emerald' | 'amber' | 'purple' | 'r
 
 export interface User {
   id: string;
-  username: string;
   name: string;
-  email?: string;
-  passwordHash: string;
+  email: string;
   avatarColor?: string;
   createdAt: string;
 }

@@ -6,7 +6,6 @@ import {
   Eye, 
   EyeOff, 
   ShieldCheck, 
-  Sparkles, 
   ArrowRight,
   LogOut,
   CheckCircle2,
@@ -32,12 +31,13 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   onSwitchMode,
   onLogout,
 }) => {
-  const [username, setUsername] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [fullName, setFullName] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
   if (!isOpen) return null;
@@ -45,23 +45,24 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    setNotice(null);
     setIsLoading(true);
 
     try {
       if (mode === 'lock') {
         if (!currentUser) throw new Error('Không tìm thấy phiên đăng nhập!');
-        const user = await loginUser(currentUser.username, password);
+        const user = await loginUser(currentUser.email, password);
         onSuccess(user);
       } else if (mode === 'login') {
-        if (!username.trim() || !password) {
-          throw new Error('Vui lòng nhập tên đăng nhập và mật khẩu!');
+        if (!email.trim() || !password) {
+          throw new Error('Vui lòng nhập email và mật khẩu!');
         }
-        const user = await loginUser(username.trim(), password);
+        const user = await loginUser(email.trim(), password);
         onSuccess(user);
       } else if (mode === 'register') {
         if (!fullName.trim()) throw new Error('Vui lòng nhập họ và tên của bạn!');
-        if (!username.trim() || username.trim().length < 3) {
-          throw new Error('Tên đăng nhập phải có ít nhất 3 ký tự!');
+        if (!/^\S+@\S+\.\S+$/.test(email.trim())) {
+          throw new Error('Vui lòng nhập địa chỉ email hợp lệ!');
         }
         if (!password || password.length < 6) {
           throw new Error('Mật khẩu phải có độ dài tối thiểu 6 ký tự!');
@@ -69,8 +70,15 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         if (password !== confirmPassword) {
           throw new Error('Mật khẩu xác nhận không khớp!');
         }
-        const user = await registerUser(fullName, username, password);
-        onSuccess(user);
+        const result = await registerUser(fullName, email, password);
+        if (result.needsEmailConfirm || !result.user) {
+          setNotice(`Đã gửi email xác nhận tới ${email.trim()}. Hãy bấm vào liên kết trong email rồi quay lại đăng nhập.`);
+          setPassword('');
+          setConfirmPassword('');
+          onSwitchMode('login');
+        } else {
+          onSuccess(result.user);
+        }
       }
     } catch (err: any) {
       setError(err?.message || 'Đã xảy ra lỗi. Vui lòng thử lại!');
@@ -79,18 +87,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     }
   };
 
-  const handleQuickDemoLogin = async () => {
-    setError(null);
-    setIsLoading(true);
-    try {
-      const user = await loginUser('demo', 'password123');
-      onSuccess(user);
-    } catch (err: any) {
-      setError(err?.message || 'Không thể đăng nhập tài khoản demo');
-    } finally {
-      setIsLoading(false);
-    }
-  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-fade-in">
@@ -135,6 +131,14 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           </div>
         )}
 
+        {/* Notice */}
+        {notice && (
+          <div className="p-3 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 rounded-xl text-xs text-emerald-700 dark:text-emerald-400 flex items-center gap-2 font-medium">
+            <CheckCircle2 className="w-4 h-4 shrink-0" />
+            <span>{notice}</span>
+          </div>
+        )}
+
         {/* Form */}
         <form onSubmit={handleSubmit} className="space-y-4">
           
@@ -161,15 +165,16 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           {mode !== 'lock' && (
             <div className="space-y-1">
               <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
-                Tên đăng nhập
+                Email
               </label>
               <div className="relative">
                 <input
-                  type="text"
+                  type="email"
                   required
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  placeholder="nhập tên đăng nhập..."
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="ten@email.com"
+                  autoComplete="email"
                   autoCapitalize="none"
                   className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80 text-xs sm:text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono"
                 />
@@ -249,20 +254,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           </button>
 
         </form>
-
-        {/* Demo Fast Login (Only in login mode) */}
-        {mode === 'login' && (
-          <div className="pt-2 border-t border-slate-100 dark:border-slate-800 text-center space-y-2">
-            <button
-              type="button"
-              onClick={handleQuickDemoLogin}
-              className="w-full py-2 px-3 text-xs font-medium text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-750 rounded-xl transition-colors flex items-center justify-center gap-1.5"
-            >
-              <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-              <span>Đăng nhập nhanh tài khoản mẫu (demo / password123)</span>
-            </button>
-          </div>
-        )}
 
         {/* Switch Between Modes */}
         <div className="text-center text-xs text-slate-500 dark:text-slate-400">

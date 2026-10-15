@@ -44,6 +44,7 @@ export interface ColorScheme {
   borderLight: string;
   borderDark: string;
   indicator: string;
+  stripe: string;
 }
 
 export const COLOR_SCHEMES: Record<NoteColor, ColorScheme> = {
@@ -55,6 +56,7 @@ export const COLOR_SCHEMES: Record<NoteColor, ColorScheme> = {
     borderLight: 'border-slate-200',
     borderDark: 'dark:border-slate-800',
     indicator: 'bg-slate-400',
+    stripe: 'from-slate-300 to-slate-400 dark:from-slate-600 dark:to-slate-700',
   },
   blue: {
     id: 'blue',
@@ -64,6 +66,7 @@ export const COLOR_SCHEMES: Record<NoteColor, ColorScheme> = {
     borderLight: 'border-sky-200',
     borderDark: 'dark:border-sky-800/60',
     indicator: 'bg-sky-500',
+    stripe: 'from-sky-400 to-blue-500',
   },
   emerald: {
     id: 'emerald',
@@ -73,6 +76,7 @@ export const COLOR_SCHEMES: Record<NoteColor, ColorScheme> = {
     borderLight: 'border-emerald-200',
     borderDark: 'dark:border-emerald-800/60',
     indicator: 'bg-emerald-500',
+    stripe: 'from-emerald-400 to-teal-500',
   },
   amber: {
     id: 'amber',
@@ -82,6 +86,7 @@ export const COLOR_SCHEMES: Record<NoteColor, ColorScheme> = {
     borderLight: 'border-amber-200',
     borderDark: 'dark:border-amber-800/60',
     indicator: 'bg-amber-500',
+    stripe: 'from-amber-400 to-orange-500',
   },
   purple: {
     id: 'purple',
@@ -91,6 +96,7 @@ export const COLOR_SCHEMES: Record<NoteColor, ColorScheme> = {
     borderLight: 'border-purple-200',
     borderDark: 'dark:border-purple-800/60',
     indicator: 'bg-purple-500',
+    stripe: 'from-purple-400 to-fuchsia-500',
   },
   rose: {
     id: 'rose',
@@ -100,5 +106,6 @@ export const COLOR_SCHEMES: Record<NoteColor, ColorScheme> = {
     borderLight: 'border-rose-200',
     borderDark: 'dark:border-rose-800/60',
     indicator: 'bg-rose-500',
+    stripe: 'from-rose-400 to-pink-500',
   },
 };

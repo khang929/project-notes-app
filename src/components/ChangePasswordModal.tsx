@@ -4,14 +4,14 @@ import { changeUserPassword } from '../utils/auth';
 
 interface ChangePasswordModalProps {
   isOpen: boolean;
-  userId: string;
+  email: string;
   onClose: () => void;
   onSuccess: () => void;
 }
 
 export const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({
   isOpen,
-  userId,
+  email,
   onClose,
   onSuccess,
 }) => {
@@ -38,7 +38,7 @@ export const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({
 
     setLoading(true);
     try {
-      await changeUserPassword(userId, oldPassword, newPassword);
+      await changeUserPassword(email, oldPassword, newPassword);
       onSuccess();
       onClose();
     } catch (err: any) {

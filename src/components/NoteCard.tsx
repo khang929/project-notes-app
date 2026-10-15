@@ -105,12 +105,15 @@ export const NoteCard: React.FC<NoteCardProps> = ({
   return (
     <article
       onClick={() => onEdit(note)}
-      className={`group relative rounded-2xl border transition-all duration-200 cursor-pointer overflow-hidden ${
+      className={`group relative rounded-2xl border transition-all duration-300 cursor-pointer overflow-hidden animate-card-in ${
         colorScheme.bgLight
       } ${colorScheme.bgDark} ${colorScheme.borderLight} ${colorScheme.borderDark} ${
-        note.isPinned ? 'ring-1 ring-amber-400/50 dark:ring-amber-500/30 shadow-xs' : 'shadow-xs hover:shadow-md hover:-translate-y-0.5'
+        note.isPinned ? 'ring-1 ring-amber-400/50 dark:ring-amber-500/30 shadow-xs' : 'shadow-sm hover:shadow-xl hover:shadow-indigo-500/10 hover:-translate-y-1'
       } ${viewMode === 'list' ? 'p-4 sm:p-5 flex flex-col md:flex-row md:items-center justify-between gap-4' : 'p-5 flex flex-col justify-between min-h-[220px]'}`}
     >
+      {/* Thanh màu nhấn phía trên */}
+      <div className={`absolute inset-x-0 top-0 h-1 bg-gradient-to-r ${colorScheme.stripe}`} />
+
       {/* Top / Main Body */}
       <div className={`space-y-3 ${viewMode === 'list' ? 'flex-1' : ''}`}>
         
@@ -191,7 +194,7 @@ export const NoteCard: React.FC<NoteCardProps> = ({
                   e.stopPropagation();
                   if (onFilterByTag) onFilterByTag(tag);
                 }}
-                className="px-2 py-0.5 rounded-md text-[11px] font-medium bg-black/5 dark:bg-white/5 text-slate-600 dark:text-slate-400 hover:bg-indigo-100 hover:text-indigo-700 dark:hover:bg-indigo-950/60 dark:hover:text-indigo-300 transition-colors"
+                className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-black/5 dark:bg-white/10 text-slate-600 dark:text-slate-400 hover:bg-indigo-100 hover:text-indigo-700 dark:hover:bg-indigo-950/60 dark:hover:text-indigo-300 transition-colors"
               >
                 #{tag}
               </button>

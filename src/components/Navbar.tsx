@@ -55,7 +55,7 @@ export const Navbar: React.FC<NavbarProps> = ({
 }) => {
   const [isUserMenuOpen, setIsUserMenuOpen] = React.useState(false);
   return (
-    <header className="sticky top-0 z-30 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 transition-colors">
+    <header className="sticky top-0 z-30 bg-white/70 dark:bg-slate-900/70 backdrop-blur-xl border-b border-slate-200 dark:border-slate-800 transition-colors">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-4 sm:gap-8">
         
         {/* Zone 1: Single text element wordmark */}
@@ -179,8 +179,8 @@ export const Navbar: React.FC<NavbarProps> = ({
                       <p className="font-bold text-slate-900 dark:text-white truncate">
                         {currentUser.name}
                       </p>
-                      <p className="text-[11px] text-slate-400 font-mono">
-                        @{currentUser.username}
+                      <p className="text-[11px] text-slate-400 truncate">
+                        {currentUser.email}
                       </p>
                     </div>
 
