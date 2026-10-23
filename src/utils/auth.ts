@@ -2,6 +2,15 @@ import type { User as SupabaseUser } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import { User } from '../types';
 
+// Ghi nhận NGAY khi nạp file: người dùng có vừa bấm liên kết "đặt lại mật khẩu" trong email không.
+// (supabase-js sẽ xóa phần #hash khỏi URL sau khi đọc, nên phải đọc trước.)
+const OPENED_FROM_RECOVERY_LINK =
+  typeof window !== 'undefined' && /(^|[#&?])type=recovery(&|$)/.test(window.location.hash + window.location.search);
+
+export function wasOpenedFromRecoveryLink(): boolean {
+  return OPENED_FROM_RECOVERY_LINK;
+}
+
 // Trạng thái "khóa nhanh" chỉ là khóa giao diện trên thiết bị này
 const SESSION_LOCKED_KEY = 'ai_notes_session_locked_v1';
 
@@ -40,6 +49,8 @@ function translateAuthError(message: string): string {
   if (m.includes('email not confirmed')) return 'Email chưa được xác nhận. Hãy kiểm tra hộp thư và bấm vào liên kết xác nhận.';
   if (m.includes('already registered') || m.includes('already been registered')) return 'Email này đã được sử dụng!';
   if (m.includes('password should be at least')) return 'Mật khẩu quá ngắn!';
+  if (m.includes('different from the old password')) return 'Mật khẩu mới phải khác mật khẩu cũ!';
+  if (m.includes('auth session missing')) return 'Liên kết đã hết hạn. Hãy yêu cầu gửi lại email đặt lại mật khẩu.';
   if (m.includes('rate limit') || m.includes('too many')) return 'Bạn thao tác quá nhanh, vui lòng thử lại sau ít phút.';
   if (m.includes('invalid email') || m.includes('unable to validate email')) return 'Địa chỉ email không hợp lệ!';
   if (m.includes('failed to fetch') || m.includes('network')) return 'Không kết nối được máy chủ. Hãy kiểm tra mạng!';
@@ -53,9 +64,13 @@ export async function getCurrentUser(): Promise<User | null> {
 }
 
 // Lắng nghe đăng nhập / đăng xuất (kể cả từ tab hoặc thiết bị khác). Trả về hàm hủy đăng ký.
-export function onAuthChange(callback: (user: User | null) => void): () => void {
-  const { data } = supabase.auth.onAuthStateChange((_event, session) => {
+export function onAuthChange(
+  callback: (user: User | null) => void,
+  onPasswordRecovery?: () => void
+): () => void {
+  const { data } = supabase.auth.onAuthStateChange((event, session) => {
     callback(session?.user ? mapUser(session.user) : null);
+    if (event === 'PASSWORD_RECOVERY') onPasswordRecovery?.();
   });
   return () => data.subscription.unsubscribe();
 }
@@ -102,6 +117,21 @@ export async function loginUser(email: string, password: string): Promise<User> 
 export async function logoutUser(): Promise<void> {
   await supabase.auth.signOut();
   setSessionLocked(false);
+}
+
+// Quên mật khẩu: gửi email chứa liên kết đặt lại mật khẩu.
+// Không tiết lộ email có tồn tại hay không (tránh dò tài khoản), nên chỉ báo lỗi mạng/giới hạn.
+export async function requestPasswordReset(email: string): Promise<void> {
+  const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+    redirectTo: window.location.origin,
+  });
+  if (error) throw new Error(translateAuthError(error.message));
+}
+
+// Đặt mật khẩu mới sau khi người dùng mở liên kết trong email (phiên khôi phục đã được tạo sẵn)
+export async function setNewPassword(newPass: string): Promise<void> {
+  const { error } = await supabase.auth.updateUser({ password: newPass });
+  if (error) throw new Error(translateAuthError(error.message));
 }
 
 // Đổi mật khẩu: xác minh mật khẩu cũ rồi mới cập nhật mật khẩu mới

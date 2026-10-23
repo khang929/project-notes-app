@@ -1,4 +1,5 @@
 import React, { useState, useRef } from 'react';
+import { aiPost } from '../utils/aiApi';
 import { 
   X, 
   Upload, 
@@ -63,14 +64,7 @@ export const ImageOcrModal: React.FC<ImageOcrModalProps> = ({
     setError(null);
 
     try {
-      const res = await fetch('/api/ai/analyze-image', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          imageBase64: selectedImage,
-          mimeType,
-        }),
-      });
+      const res = await aiPost('/api/ai/analyze-image', { imageBase64: selectedImage, mimeType });
 
       const data = await res.json();
       if (!res.ok) {

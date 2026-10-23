@@ -1,6 +1,6 @@
 # Ứng Dụng Quản Lý Ghi Chú Cá Nhân Thông Minh (AI Notes App)
 
-Ứng dụng web quản lý ghi chú hiện đại, hỗ trợ lưu trữ cục bộ (localStorage), ghim ghi chú, phân loại theo thẻ màu và tích hợp Google Gemini AI (tóm tắt nội dung, gợi ý thẻ phân loại, trợ lý chatbot hỏi đáp, quét chữ từ ảnh OCR).
+Ứng dụng web quản lý ghi chú hiện đại, lưu ghi chú trên đám mây (Supabase, đăng nhập bằng email), ghim ghi chú, phân loại theo thẻ màu và tích hợp Google Gemini AI (tóm tắt nội dung, gợi ý thẻ phân loại, trợ lý chatbot hỏi đáp, quét chữ từ ảnh OCR).
 
 ---
 
@@ -59,3 +59,61 @@
 ### 6. Các Lệnh Hữu Ích Khác
 - **`npm run build`**: Đóng gói mã nguồn sẵn sàng đưa lên hosting / máy chủ sản xuất.
 - **`npm run lint`**: Kiểm tra lỗi cú pháp TypeScript trong toàn bộ dự án.
+
+
+---
+
+## ☁️ Dùng Supabase của riêng bạn (bắt buộc khi công khai app)
+
+Mặc định code trỏ vào một project Supabase có sẵn. Muốn dữ liệu nằm trong tài khoản của bạn:
+
+1. Vào https://supabase.com → **New project** (nhớ mật khẩu database, chọn vùng gần Việt Nam như Singapore).
+2. **SQL Editor** → New query → dán `supabase/notes_schema.sql` → **Run**. Sau đó làm tương tự với `supabase/ai_schema.sql`.
+3. **Project Settings → API**: copy **Project URL** và **Publishable key** (anon key).
+4. Đặt vào file `.env` (và vào Environment Variables trên Vercel/hosting):
+   ```env
+   VITE_SUPABASE_URL=https://xxxx.supabase.co
+   VITE_SUPABASE_PUBLISHABLE_KEY=sb_publishable_xxx
+   GEMINI_API_KEY=...
+   ```
+5. **Authentication → URL Configuration**: đặt **Site URL** là địa chỉ web của bạn, thêm vào **Redirect URLs** cả `http://localhost:3000` và domain thật (cần cho email xác nhận và quên mật khẩu).
+6. Khởi động lại server (`npm run dev`) rồi đăng ký thử một tài khoản.
+
+---
+
+## 🧠 Kiến Trúc Trợ Lý AI
+
+```
+Giao diện (chat, đính kèm tệp, lịch sử)
+        ↓  gửi kèm phiên đăng nhập Supabase
+Backend — xác thực · giới hạn tốc độ · ngân sách token · xử lý lỗi        (server/ai/endpoints.ts, auth.ts, limits.ts)
+        ↓
+AI Orchestrator — hiểu yêu cầu, chọn công cụ                               (server/ai/orchestrator.ts, assistant.ts)
+        ↓
+Trò chuyện · Lập trình (chạy thử code) · Tra cứu (Google Search + nguồn) · Xử lý tệp   (server/ai/handlers.ts)
+        ↓
+Kiểm tra kết quả — rỗng/quá dài/thiếu nguồn, thử lại nếu không đạt         (server/ai/verify.ts)
+        ↓
+Cơ sở dữ liệu — lịch sử trò chuyện, nhật ký lỗi & token (Supabase)          (server/ai/store.ts, supabase/ai_schema.sql)
+```
+
+- `server.ts` (chạy local) và `api/ai/*.ts` (Vercel) đều chỉ gọi chung một "cổng" trong `server/ai/endpoints.ts`.
+- Ghi chú của người dùng **không** được trình duyệt gửi lên; server tự đọc bằng quyền của chính người đó (Row Level Security).
+- Giới hạn (số yêu cầu/phút, token/ngày, kích thước tệp) chỉnh trong `server/ai/config.ts`. Bộ đếm theo phút/ngày nằm trong bộ nhớ server; số liệu chính xác nằm ở bảng `ai_usage_logs`.
+
+### Bật lịch sử trò chuyện và nhật ký (làm một lần)
+1. Mở Supabase Dashboard → **SQL Editor** → **New query**.
+2. Dán toàn bộ nội dung file `supabase/ai_schema.sql` rồi bấm **Run**.
+
+Không chạy bước này thì AI vẫn trả lời bình thường, chỉ là không lưu lịch sử và không ghi nhật ký.
+
+---
+
+## ⚡ Tốc độ phản hồi của AI
+
+Để trợ lý trả lời nhanh, backend áp dụng các nguyên tắc sau (đều nằm trong `server/ai/`):
+
+- **Chọn công cụ bằng luật trước, hỏi AI sau** (`route-rules.ts`, `orchestrator.ts`): chào hỏi, hỏi về ghi chú, viết code, tra cứu tin tức… được nhận diện ngay (0 ms, hỗ trợ cả gõ không dấu). Chỉ khi yêu cầu mơ hồ mới gọi model nhỏ để phân loại, và bước này bị bỏ nếu quá `LIMITS.routerTimeoutMs` (mặc định 3 giây).
+- **Đọc ghi chú song song** với bước điều phối, và **bỏ qua hẳn** khi chỉ là chào hỏi (`assistant.ts`).
+- **Ít lượt gọi Supabase nối tiếp hơn** khi lưu lịch sử (`store.ts`) và **nhớ kết quả xác thực tối đa 60 giây** (`auth.ts`).
+- Muốn chỉnh: `LIMITS` và `MODELS` trong `server/ai/config.ts`; thêm từ khóa nhận diện trong `server/ai/route-rules.ts`.

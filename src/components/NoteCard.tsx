@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { aiPost } from '../utils/aiApi';
 import { 
   Pin, 
   Pencil, 
@@ -14,6 +15,7 @@ import {
   Download
 } from 'lucide-react';
 import { Note } from '../types';
+import { MarkdownText } from './MarkdownText';
 import { COLOR_SCHEMES, formatVietnameseDate } from '../utils/format';
 
 interface NoteCardProps {
@@ -71,14 +73,7 @@ export const NoteCard: React.FC<NoteCardProps> = ({
     setIsSummarizing(true);
     setSummaryError(null);
     try {
-      const res = await fetch('/api/ai/summarize', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          title: note.title,
-          content: note.content,
-        }),
-      });
+      const res = await aiPost('/api/ai/summarize', { title: note.title, content: note.content });
       const data = await res.json();
       if (!res.ok) {
         throw new Error(data.error || 'Lỗi khi tạo tóm tắt');
@@ -171,9 +166,10 @@ export const NoteCard: React.FC<NoteCardProps> = ({
                 <ChevronUp className="w-3.5 h-3.5" />
               </button>
             </div>
-            <p className="whitespace-pre-line leading-relaxed text-slate-800 dark:text-slate-200 font-medium">
-              {note.summary}
-            </p>
+            <MarkdownText
+              text={note.summary || ''}
+              className="leading-relaxed text-slate-800 dark:text-slate-200 font-medium"
+            />
           </div>
         )}
 

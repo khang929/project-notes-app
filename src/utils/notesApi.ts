@@ -71,6 +71,9 @@ export async function insertNote(note: Partial<Note>): Promise<Note> {
 
 // Dùng cho nhập file JSON và thêm ghi chú mẫu: id cũ bị bỏ, database tự tạo id mới
 export async function insertManyNotes(notes: Partial<Note>[]): Promise<Note[]> {
+  // Luôn gửi created_at/updated_at: supabase-js đặt cột thiếu thành NULL (không dùng default),
+  // nên ghi chú thiếu ngày sẽ làm cả lô nhập bị lỗi.
+  const nowIso = new Date().toISOString();
   const rows = notes
     .filter((n) => n && typeof n === 'object' && (typeof n.title === 'string' || typeof n.content === 'string'))
     .map((n) => ({
@@ -82,8 +85,8 @@ export async function insertManyNotes(notes: Partial<Note>[]): Promise<Note[]> {
         color: VALID_COLORS.includes(n.color as NoteColor) ? n.color : 'default',
         summary: typeof n.summary === 'string' ? n.summary : undefined,
       }),
-      created_at: validIso(n.createdAt),
-      updated_at: validIso(n.updatedAt),
+      created_at: validIso(n.createdAt) ?? nowIso,
+      updated_at: validIso(n.updatedAt) ?? validIso(n.createdAt) ?? nowIso,
     }));
 
   const saved: Note[] = [];

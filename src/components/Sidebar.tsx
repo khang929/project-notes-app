@@ -1,4 +1,4 @@
-import React, { useRef } from 'react';
+import React, { useRef, useState } from 'react';
 import { 
   Search, 
   X, 
@@ -13,6 +13,7 @@ import {
   Sparkles
 } from 'lucide-react';
 import { FilterState, Note, SortOption } from '../types';
+import { filesToNotes, IMPORT_ACCEPT } from '../utils/importFiles';
 
 interface SidebarProps {
   filter: FilterState;
@@ -34,6 +35,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onShowToast,
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isImporting, setIsImporting] = useState(false);
 
   const handleExportJson = () => {
     const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(notes, null, 2));
@@ -46,25 +48,21 @@ export const Sidebar: React.FC<SidebarProps> = ({
     onShowToast('Đã tải xuống file sao lưu ghi chú JSON!', 'success');
   };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const input = e.target;
+    const files: File[] = input.files ? Array.from(input.files) : []; // sao chép trước khi xóa lựa chọn
+    input.value = ''; // cho phép chọn lại đúng tệp đó lần sau
+    if (files.length === 0) return;
 
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      try {
-        const json = JSON.parse(event.target?.result as string);
-        if (Array.isArray(json)) {
-          onImportNotes(json);
-        } else {
-          onShowToast('Tệp JSON không đúng định dạng danh sách ghi chú!', 'error');
-        }
-      } catch {
-        onShowToast('Không thể đọc tệp JSON. Vui lòng kiểm tra lại!', 'error');
-      }
-    };
-    reader.readAsText(file);
-    if (fileInputRef.current) fileInputRef.current.value = '';
+    setIsImporting(true);
+    onShowToast(`Đang xử lý ${files.length} tệp...`, 'info');
+    try {
+      const { notes: imported, errors } = await filesToNotes(files);
+      errors.forEach((er) => onShowToast(`${er.fileName}: ${er.message}`, 'error'));
+      if (imported.length > 0) onImportNotes(imported);
+    } finally {
+      setIsImporting(false);
+    }
   };
 
   return (
@@ -249,17 +247,19 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
           <button
             onClick={() => fileInputRef.current?.click()}
-            title="Nhập lại file JSON đã sao lưu"
+            disabled={isImporting}
+            title="Nhập ghi chú từ tệp: JSON sao lưu, văn bản, Word, PDF, ảnh..."
             className="px-2.5 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-300 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors flex items-center justify-center gap-1.5"
           >
             <Upload className="w-3.5 h-3.5" />
-            <span>Nhập JSON</span>
+            <span>{isImporting ? 'Đang nhập...' : 'Nhập tệp'}</span>
           </button>
           <input
             type="file"
             ref={fileInputRef}
             onChange={handleFileChange}
-            accept=".json"
+            accept={IMPORT_ACCEPT}
+            multiple
             className="hidden"
           />
         </div>

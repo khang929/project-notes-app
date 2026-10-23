@@ -16,7 +16,7 @@ import {
 } from 'lucide-react';
 import { Note, FilterState, User } from './types';
 import { getStoredTheme, saveStoredTheme, INITIAL_SAMPLE_NOTES } from './utils/storage';
-import { getCurrentUser, onAuthChange, logoutUser, isSessionLocked, setSessionLocked } from './utils/auth';
+import { getCurrentUser, onAuthChange, logoutUser, isSessionLocked, setSessionLocked, wasOpenedFromRecoveryLink } from './utils/auth';
 import {
   fetchNotes,
   insertNote,
@@ -43,7 +43,7 @@ export default function App() {
   const [authReady, setAuthReady] = useState(false);
   const [isLocked, setIsLocked] = useState<boolean>(() => isSessionLocked());
   const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false);
-  const [authModalMode, setAuthModalMode] = useState<'login' | 'register' | 'lock'>('login');
+  const [authModalMode, setAuthModalMode] = useState<'login' | 'register' | 'lock' | 'forgot' | 'reset'>('login');
   const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
 
   const [notes, setNotes] = useState<Note[]>([]);
@@ -105,7 +105,11 @@ export default function App() {
       .then((user) => {
         if (!active) return;
         setCurrentUserState(user);
-        if (user && isSessionLocked()) {
+        if (user && wasOpenedFromRecoveryLink()) {
+          // Mở từ liên kết "đặt lại mật khẩu" trong email -> yêu cầu nhập mật khẩu mới
+          setAuthModalMode('reset');
+          setIsAuthModalOpen(true);
+        } else if (user && isSessionLocked()) {
           setAuthModalMode('lock');
           setIsAuthModalOpen(true);
         }
@@ -114,10 +118,17 @@ export default function App() {
         if (active) setAuthReady(true);
       });
 
-    const unsubscribe = onAuthChange((user) => {
-      if (!active) return;
-      setCurrentUserState((prev) => (prev?.id === user?.id ? prev : user));
-    });
+    const unsubscribe = onAuthChange(
+      (user) => {
+        if (!active) return;
+        setCurrentUserState((prev) => (prev?.id === user?.id ? prev : user));
+      },
+      () => {
+        if (!active) return;
+        setAuthModalMode('reset');
+        setIsAuthModalOpen(true);
+      }
+    );
 
     return () => {
       active = false;
@@ -191,10 +202,11 @@ export default function App() {
   };
 
   // Note CRUD operations (lưu trên Supabase)
-  const handleSaveNote = async (noteData: Omit<Note, 'id' | 'createdAt' | 'updatedAt'> & { id?: string }) => {
+  // Trả về true nếu lưu thành công, false nếu thất bại (để form giữ lại nội dung người dùng đã nhập)
+  const handleSaveNote = async (noteData: Omit<Note, 'id' | 'createdAt' | 'updatedAt'> & { id?: string }): Promise<boolean> => {
     if (!currentUser) {
       showToast('Vui lòng đăng nhập để lưu ghi chú', 'error');
-      return;
+      return false;
     }
     try {
       if (noteData.id) {
@@ -206,8 +218,10 @@ export default function App() {
         setNotes((prev) => [saved, ...prev]);
         showToast('Đã tạo ghi chú mới thành công!', 'success');
       }
+      return true;
     } catch (err: any) {
       showToast(`Không lưu được ghi chú: ${err?.message || 'lỗi không xác định'}`, 'error');
+      return false;
     }
   };
 
@@ -585,6 +599,7 @@ export default function App() {
         isOpen={isAiChatOpen}
         onClose={() => setIsAiChatOpen(false)}
         notes={notes}
+        userId={currentUser?.id}
         onCreateNoteFromAi={handleCreateNoteFromAi}
       />
 
@@ -638,6 +653,11 @@ export default function App() {
         onSuccess={handleAuthSuccess}
         onSwitchMode={(mode) => setAuthModalMode(mode)}
         onLogout={handleLogout}
+        onPasswordReset={() => {
+          setIsAuthModalOpen(false);
+          setAuthModalMode('login');
+          showToast('Đã đặt mật khẩu mới thành công!', 'success');
+        }}
       />
 
       {/* Change Password Modal */}

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { aiPost } from '../utils/aiApi';
 import { 
   X, 
   Sparkles, 
@@ -17,11 +18,12 @@ import {
 } from 'lucide-react';
 import { Note, NoteColor } from '../types';
 import { COLOR_SCHEMES } from '../utils/format';
+import { MarkdownText } from './MarkdownText';
 
 interface NoteModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSave: (noteData: Omit<Note, 'id' | 'createdAt' | 'updatedAt'> & { id?: string }) => void;
+  onSave: (noteData: Omit<Note, 'id' | 'createdAt' | 'updatedAt'> & { id?: string }) => Promise<boolean> | boolean | void;
   onDeleteNote?: (note: Note) => void;
   editingNote?: Note | null;
   existingAppTags: string[];
@@ -42,6 +44,7 @@ export const NoteModal: React.FC<NoteModalProps> = ({
   const [isPinned, setIsPinned] = useState(false);
   const [color, setColor] = useState<NoteColor>('default');
   const [validationError, setValidationError] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
 
   // AI states
   const [isSuggestingTags, setIsSuggestingTags] = useState(false);
@@ -85,7 +88,7 @@ export const NoteModal: React.FC<NoteModalProps> = ({
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, title, content, tags, isPinned, color]);
+  }, [isOpen, title, content, tags, isPinned, color, isSaving]);
 
   if (!isOpen) return null;
 
@@ -112,15 +115,7 @@ export const NoteModal: React.FC<NoteModalProps> = ({
     setIsSuggestingTags(true);
     setTagError(null);
     try {
-      const res = await fetch('/api/ai/suggest-tags', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          title,
-          content,
-          existingTags: existingAppTags,
-        }),
-      });
+      const res = await aiPost('/api/ai/suggest-tags', { title, content, existingTags: existingAppTags });
       const data = await res.json();
       if (!res.ok) {
         throw new Error(data.error || 'Lỗi khi yêu cầu gợi ý thẻ');
@@ -148,11 +143,7 @@ export const NoteModal: React.FC<NoteModalProps> = ({
     setIsSummarizing(true);
     setValidationError(null);
     try {
-      const res = await fetch('/api/ai/summarize', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title, content }),
-      });
+      const res = await aiPost('/api/ai/summarize', { title, content });
       const data = await res.json();
       if (res.ok && data.summary) {
         setModalSummary(data.summary);
@@ -185,22 +176,29 @@ export const NoteModal: React.FC<NoteModalProps> = ({
     }, 10);
   };
 
-  const handleFormSubmit = () => {
+  const handleFormSubmit = async () => {
+    if (isSaving) return;
     if (!title.trim() && !content.trim()) {
       setValidationError('Vui lòng nhập tiêu đề hoặc nội dung ghi chú!');
       return;
     }
 
-    onSave({
-      id: editingNote?.id,
-      title: title.trim(),
-      content: content.trim(),
-      tags,
-      isPinned,
-      color,
-      summary: modalSummary || undefined,
-    });
-    onClose();
+    setIsSaving(true);
+    try {
+      const ok = await onSave({
+        id: editingNote?.id,
+        title: title.trim(),
+        content: content.trim(),
+        tags,
+        isPinned,
+        color,
+        summary: modalSummary || undefined,
+      });
+      // Chỉ đóng khi lưu thành công; nếu lỗi thì giữ nguyên nội dung để người dùng thử lại
+      if (ok !== false) onClose();
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   // Stats
@@ -357,9 +355,10 @@ export const NoteModal: React.FC<NoteModalProps> = ({
                   Xóa tóm tắt
                 </button>
               </div>
-              <p className="whitespace-pre-line text-slate-700 dark:text-slate-300 leading-relaxed font-medium">
-                {modalSummary}
-              </p>
+              <MarkdownText
+                text={modalSummary}
+                className="text-slate-700 dark:text-slate-300 leading-relaxed font-medium"
+              />
             </div>
           )}
 
@@ -528,9 +527,11 @@ export const NoteModal: React.FC<NoteModalProps> = ({
             <button
               type="button"
               onClick={handleFormSubmit}
-              className="px-5 py-2 text-xs sm:text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-600 rounded-xl shadow-sm shadow-indigo-600/30 transition-all active:scale-95"
+              disabled={isSaving}
+              className="px-5 py-2 text-xs sm:text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-600 rounded-xl shadow-sm shadow-indigo-600/30 transition-all active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center gap-1.5"
             >
-              {editingNote ? 'Cập nhật ghi chú' : 'Lưu ghi chú'}
+              {isSaving && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+              {isSaving ? 'Đang lưu...' : editingNote ? 'Cập nhật ghi chú' : 'Lưu ghi chú'}
             </button>
           </div>
         </div>

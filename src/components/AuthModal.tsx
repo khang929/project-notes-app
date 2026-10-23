@@ -12,15 +12,17 @@ import {
   AlertCircle
 } from 'lucide-react';
 import { User } from '../types';
-import { loginUser, registerUser } from '../utils/auth';
+import { loginUser, registerUser, requestPasswordReset, setNewPassword } from '../utils/auth';
 
 interface AuthModalProps {
   isOpen: boolean;
-  mode: 'login' | 'register' | 'lock';
+  mode: 'login' | 'register' | 'lock' | 'forgot' | 'reset';
   currentUser: User | null;
   onSuccess: (user: User) => void;
-  onSwitchMode: (mode: 'login' | 'register') => void;
+  onSwitchMode: (mode: 'login' | 'register' | 'forgot') => void;
   onLogout?: () => void;
+  /** Gọi sau khi đặt mật khẩu mới thành công (chế độ 'reset') */
+  onPasswordReset?: () => void;
 }
 
 export const AuthModal: React.FC<AuthModalProps> = ({
@@ -30,6 +32,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   onSuccess,
   onSwitchMode,
   onLogout,
+  onPasswordReset,
 }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -53,6 +56,23 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         if (!currentUser) throw new Error('Không tìm thấy phiên đăng nhập!');
         const user = await loginUser(currentUser.email, password);
         onSuccess(user);
+      } else if (mode === 'forgot') {
+        if (!/^\S+@\S+\.\S+$/.test(email.trim())) {
+          throw new Error('Vui lòng nhập địa chỉ email hợp lệ!');
+        }
+        await requestPasswordReset(email);
+        setNotice(`Nếu ${email.trim()} đã đăng ký, bạn sẽ nhận được email hướng dẫn đặt lại mật khẩu trong ít phút. Hãy kiểm tra cả thư rác.`);
+      } else if (mode === 'reset') {
+        if (!password || password.length < 6) {
+          throw new Error('Mật khẩu phải có độ dài tối thiểu 6 ký tự!');
+        }
+        if (password !== confirmPassword) {
+          throw new Error('Mật khẩu xác nhận không khớp!');
+        }
+        await setNewPassword(password);
+        setPassword('');
+        setConfirmPassword('');
+        onPasswordReset?.();
       } else if (mode === 'login') {
         if (!email.trim() || !password) {
           throw new Error('Vui lòng nhập email và mật khẩu!');
@@ -101,6 +121,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               <Lock className="w-7 h-7 text-amber-500 animate-pulse" />
             ) : mode === 'register' ? (
               <UserIcon className="w-7 h-7" />
+            ) : mode === 'forgot' || mode === 'reset' ? (
+              <KeyRound className="w-7 h-7" />
             ) : (
               <ShieldCheck className="w-7 h-7" />
             )}
@@ -111,6 +133,10 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               ? 'Khóa bảo mật ứng dụng'
               : mode === 'register'
               ? 'Tạo tài khoản cá nhân'
+              : mode === 'forgot'
+              ? 'Quên mật khẩu'
+              : mode === 'reset'
+              ? 'Đặt mật khẩu mới'
               : 'Đăng nhập bảo mật'}
           </h2>
 
@@ -119,6 +145,10 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               ? `Chào mừng trở lại, ${currentUser?.name || 'bạn'}. Nhập mật khẩu để tiếp tục.`
               : mode === 'register'
               ? 'Bảo vệ toàn bộ ghi chú của bạn bằng mật khẩu riêng tư'
+              : mode === 'forgot'
+              ? 'Nhập email đã đăng ký, chúng tôi sẽ gửi liên kết để bạn đặt lại mật khẩu'
+              : mode === 'reset'
+              ? 'Nhập mật khẩu mới cho tài khoản của bạn'
               : 'Đăng nhập để xem và quản lý các ghi chú riêng tư của bạn'}
           </p>
         </div>
@@ -161,8 +191,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({
             </div>
           )}
 
-          {/* Username (Not in lock mode) */}
-          {mode !== 'lock' && (
+          {/* Email (không hiện ở chế độ khóa / đặt mật khẩu mới) */}
+          {mode !== 'lock' && mode !== 'reset' && (
             <div className="space-y-1">
               <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
                 Email
@@ -182,13 +212,14 @@ export const AuthModal: React.FC<AuthModalProps> = ({
             </div>
           )}
 
-          {/* Password */}
+          {/* Password (không cần ở chế độ quên mật khẩu) */}
+          {mode !== 'forgot' && (
           <div className="space-y-1">
             <div className="flex items-center justify-between">
               <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
-                {mode === 'lock' ? 'Mật khẩu tài khoản' : 'Mật khẩu'}
+                {mode === 'lock' ? 'Mật khẩu tài khoản' : mode === 'reset' ? 'Mật khẩu mới' : 'Mật khẩu'}
               </label>
-              {mode === 'register' && (
+              {(mode === 'register' || mode === 'reset') && (
                 <span className="text-[11px] text-slate-400">Tối thiểu 6 ký tự</span>
               )}
             </div>
@@ -200,20 +231,23 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
                 className="w-full px-3.5 py-2.5 pr-10 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80 text-xs sm:text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono"
-                autoFocus={mode === 'lock'}
+                autoFocus={mode === 'lock' || mode === 'reset'}
+                autoComplete={mode === 'login' || mode === 'lock' ? 'current-password' : 'new-password'}
               />
               <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
+                aria-label={showPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
                 className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
               >
                 {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </button>
             </div>
           </div>
+          )}
 
-          {/* Register: Confirm Password */}
-          {mode === 'register' && (
+          {/* Register / Reset: Confirm Password */}
+          {(mode === 'register' || mode === 'reset') && (
             <div className="space-y-1">
               <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
                 Xác nhận mật khẩu
@@ -245,6 +279,16 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 <CheckCircle2 className="w-4 h-4" />
                 <span>{isLoading ? 'Đang tạo...' : 'Đăng ký tài khoản'}</span>
               </>
+            ) : mode === 'forgot' ? (
+              <>
+                <ArrowRight className="w-4 h-4" />
+                <span>{isLoading ? 'Đang gửi...' : 'Gửi liên kết đặt lại mật khẩu'}</span>
+              </>
+            ) : mode === 'reset' ? (
+              <>
+                <CheckCircle2 className="w-4 h-4" />
+                <span>{isLoading ? 'Đang lưu...' : 'Lưu mật khẩu mới'}</span>
+              </>
             ) : (
               <>
                 <ArrowRight className="w-4 h-4" />
@@ -266,7 +310,33 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               <LogOut className="w-3.5 h-3.5" />
               <span>Đăng xuất hoặc chuyển tài khoản khác</span>
             </button>
+          ) : mode === 'reset' ? null : mode === 'forgot' ? (
+            <button
+              type="button"
+              onClick={() => {
+                setError(null);
+                setNotice(null);
+                onSwitchMode('login');
+              }}
+              className="text-indigo-600 dark:text-indigo-400 font-bold hover:underline"
+            >
+              Quay lại đăng nhập
+            </button>
           ) : mode === 'login' ? (
+            <div className="space-y-2">
+            <p>
+              <button
+                type="button"
+                onClick={() => {
+                  setError(null);
+                  setNotice(null);
+                  onSwitchMode('forgot');
+                }}
+                className="text-slate-600 dark:text-slate-300 font-semibold hover:underline"
+              >
+                Quên mật khẩu?
+              </button>
+            </p>
             <p>
               Chưa có tài khoản?{' '}
               <button
@@ -280,6 +350,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 Đăng ký ngay
               </button>
             </p>
+            </div>
           ) : (
             <p>
               Đã có tài khoản?{' '}

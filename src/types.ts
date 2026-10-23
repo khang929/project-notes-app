@@ -31,9 +31,30 @@ export interface FilterState {
   viewMode: 'grid' | 'list';
 }
 
+export type AiRoute = 'chat' | 'code' | 'search' | 'file';
+
+export interface AiStep {
+  key: string;
+  label: string;
+  detail?: string;
+  status: 'ok' | 'warn' | 'skip';
+}
+
+export interface AiSource {
+  title: string;
+  url: string;
+}
+
 export interface ChatMessage {
   id: string;
   role: 'user' | 'model';
   text: string;
   timestamp: string;
+  // Thông tin do bộ điều phối AI trả về (chỉ có ở tin nhắn của AI)
+  route?: AiRoute;
+  routeLabel?: string;
+  steps?: AiStep[];
+  sources?: AiSource[];
+  // Tên tệp người dùng đã đính kèm (chỉ có ở tin nhắn của người dùng)
+  attachmentName?: string;
 }

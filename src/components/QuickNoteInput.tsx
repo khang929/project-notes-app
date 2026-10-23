@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { aiPost } from '../utils/aiApi';
 import { 
   Plus, 
   Pin, 
@@ -16,7 +17,7 @@ import { Note, NoteColor } from '../types';
 import { COLOR_SCHEMES } from '../utils/format';
 
 interface QuickNoteInputProps {
-  onSave: (noteData: Omit<Note, 'id' | 'createdAt' | 'updatedAt'>) => void;
+  onSave: (noteData: Omit<Note, 'id' | 'createdAt' | 'updatedAt'>) => Promise<boolean> | boolean | void;
   existingAppTags: string[];
 }
 
@@ -33,6 +34,7 @@ export const QuickNoteInput: React.FC<QuickNoteInputProps> = ({
   const [color, setColor] = useState<NoteColor>('default');
   const [isSuggestingTags, setIsSuggestingTags] = useState(false);
   const [suggestedTags, setSuggestedTags] = useState<string[]>([]);
+  const [isSaving, setIsSaving] = useState(false);
 
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -66,11 +68,7 @@ export const QuickNoteInput: React.FC<QuickNoteInputProps> = ({
     if (!title.trim() && !content.trim()) return;
     setIsSuggestingTags(true);
     try {
-      const res = await fetch('/api/ai/suggest-tags', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title, content, existingTags: existingAppTags }),
-      });
+      const res = await aiPost('/api/ai/suggest-tags', { title, content, existingTags: existingAppTags });
       const data = await res.json();
       if (res.ok && Array.isArray(data.tags)) {
         setSuggestedTags(data.tags.filter((t: string) => !tags.includes(t)));
@@ -82,20 +80,29 @@ export const QuickNoteInput: React.FC<QuickNoteInputProps> = ({
     }
   };
 
-  const handleSubmit = (e?: React.FormEvent) => {
+  const handleSubmit = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
+    if (isSaving) return;
     if (!title.trim() && !content.trim()) {
       setIsExpanded(false);
       return;
     }
 
-    onSave({
-      title: title.trim(),
-      content: content.trim(),
-      tags,
-      isPinned,
-      color,
-    });
+    setIsSaving(true);
+    let ok: boolean | void;
+    try {
+      ok = await onSave({
+        title: title.trim(),
+        content: content.trim(),
+        tags,
+        isPinned,
+        color,
+      });
+    } finally {
+      setIsSaving(false);
+    }
+    // Lưu lỗi -> giữ nguyên nội dung đã nhập để người dùng thử lại
+    if (ok === false) return;
 
     // Reset
     setTitle('');
@@ -295,9 +302,11 @@ export const QuickNoteInput: React.FC<QuickNoteInputProps> = ({
               </button>
               <button
                 type="submit"
-                className="px-4 py-1.5 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 dark:bg-indigo-500 rounded-lg shadow-xs transition-all active:scale-95"
+                disabled={isSaving}
+                className="px-4 py-1.5 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 dark:bg-indigo-500 rounded-lg shadow-xs transition-all active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center gap-1.5"
               >
-                Lưu ghi chú
+                {isSaving && <Loader2 className="w-3 h-3 animate-spin" />}
+                {isSaving ? 'Đang lưu...' : 'Lưu ghi chú'}
               </button>
             </div>
 
